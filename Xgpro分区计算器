@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Xgpro分区计算器</title>
+<style>
+body { 
+    font-family: Arial; 
+    margin: 20px; 
+    background-color: #f5f5f5;
+}
+.calculator-container {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    max-width: 1200px;
+    margin: 0 auto;
+}
+table { 
+    border-collapse: collapse; 
+    width: 100%; 
+    margin-top: 20px;
+}
+th, td { 
+    border: 1px solid #ddd; 
+    padding: 10px; 
+    text-align: center; 
+}
+th {
+    background-color: #4CAF50;
+    color: white;
+}
+input { 
+    width: 120px; 
+    padding: 6px;
+    text-align: center; 
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+.result { 
+    font-weight: bold; 
+    color: #0066cc;
+    font-family: monospace;
+}
+button { 
+    margin: 15px 0; 
+    padding: 10px 20px; 
+    background: #4CAF50; 
+    color: white; 
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+}
+button:hover {
+    background: #45a049;
+}
+.config-panel {
+    background: #e9f7ef;
+    padding: 15px;
+    border-radius: 5px;
+    margin-bottom: 20px;
+}
+.error {
+    color: #e74c3c;
+    font-weight: bold;
+}
+</style>
+</head>
+<body>
+<div class="calculator-container">
+    <h2>Xgpro分区计算器</h2>
+    
+    <div class="config-panel">
+        <label for="blockSize">块大小（字节）:</label>
+        <select id="blockSize">
+            <option value="65536">65536 (0x10000)</option>
+            <option value="131072" selected>131072 (0x20000)</option>
+            <option value="262144">262144 (0x40000)</option>
+            <option value="524288">524288 (0x80000)</option>
+        </select>
+        <button onclick="calculateAll()">批量计算</button>
+        <button onclick="resetAll()" style="background:#f39c12;">重置</button>
+    </div>
+
+    <table>
+        <tr>
+            <th>分区</th>
+            <th>起始地址(hex)</th>
+            <th>结束地址(hex)</th>
+            <th>大小(hex)</th>
+            <th>ST_BLK</th>
+            <th>END_BLK</th>
+            <th>CNT_BLK</th>
+            <th>验证</th>
+        </tr>
+        <!-- 动态生成10行输入框 -->
+        <script>
+        document.write(Array(10).fill().map((_,i) => `
+        <tr>
+            <td>${i+1}</td>
+            <td><input type="text" id="start${i}" placeholder="0x0000000" value="${i===0?'0x0000000':''}"></td>
+            <td><input type="text" id="end${i}" placeholder="0x0000000" value="${i===0?'0x0000000':''}"></td>
+            <td class="result" id="size${i}">-</td>
+            <td class="result" id="stBlk${i}">-</td>
+            <td class="result" id="endBlk${i}">-</td>
+            <td class="result" id="cntBlk${i}">-</td>
+            <td class="result" id="verify${i}">-</td>
+        </tr>
+        `).join(''));
+        </script>
+    </table>
+</div>
+
+<script>
+// 验证十六进制格式
+function isValidHex(hex) {
+    return /^0x[0-9A-Fa-f]+$/i.test(hex);
+}
+
+function calculateAll() {
+    const blockSize = parseInt(document.getElementById('blockSize').value);
+    
+    Array(10).fill().forEach((_,i) => {
+        const startInput = document.getElementById(`start${i}`).value.trim();
+        const endInput = document.getElementById(`end${i}`).value.trim();
+        
+        // 清空错误提示
+        document.getElementById(`verify${i}`).className = 'result';
+        document.getElementById(`verify${i}`).textContent = '-';
+        
+        // 跳过空行
+        if (!startInput && !endInput) return;
+        
+        // 格式验证
+        if (!isValidHex(startInput) || !isValidHex(endInput)) {
+            document.getElementById(`verify${i}`).className = 'error';
+            document.getElementById(`verify${i}`).textContent = '无效的十六进制格式';
+            return;
+        }
+        
+        // HEX转十进制
+        const startDec = parseInt(startInput, 16);
+        const endDec = parseInt(endInput, 16);
+        
+        // 地址范围验证
+        if (startDec >= endDec) {
+            document.getElementById(`verify${i}`).className = 'error';
+            document.getElementById(`verify${i}`).textContent = '结束地址必须大于起始地址';
+            return;
+        }
+        
+        // 计算分区大小
+        const sizeDec = endDec - startDec;
+        const sizeHex = sizeDec.toString(16).toUpperCase();
+        
+        // 计算块信息（修正后的关键逻辑）
+        const stBlk = Math.floor(startDec / blockSize);
+        const endBlk = Math.floor((endDec - 1) / blockSize); // 关键修正：结束地址减1再计算
+        const cntBlk = endBlk - stBlk + 1;
+        
+        // 验证计算
+        const calcSize = cntBlk * blockSize;
+        const verifyStatus = Math.abs(calcSize - sizeDec) <= blockSize ? '✓' : '⚠ 范围误差';
+        
+        // 显示结果
+        document.getElementById(`size${i}`).textContent = `0x${sizeHex}`;
+        document.getElementById(`stBlk${i}`).textContent = stBlk;
+        document.getElementById(`endBlk${i}`).textContent = endBlk;
+        document.getElementById(`cntBlk${i}`).textContent = cntBlk;
+        document.getElementById(`verify${i}`).textContent = verifyStatus;
+        
+        // 高亮异常结果
+        if (verifyStatus.includes('⚠')) {
+            document.getElementById(`verify${i}`).className = 'error';
+        }
+    });
+}
+
+function resetAll() {
+    Array(10).fill().forEach((_,i) => {
+        document.getElementById(`start${i}`).value = i===0 ? '0x0000000' : '';
+        document.getElementById(`end${i}`).value = i===0 ? '0x0000000' : '';
+        document.getElementById(`size${i}`).textContent = '-';
+        document.getElementById(`stBlk${i}`).textContent = '-';
+        document.getElementById(`endBlk${i}`).textContent = '-';
+        document.getElementById(`cntBlk${i}`).textContent = '-';
+        document.getElementById(`verify${i}`).textContent = '-';
+        document.getElementById(`verify${i}`).className = 'result';
+    });
+}
+</script>
+</body>
+</html>
+<div style="text-align: center; margin-top: 30px; color: #666; font-style: italic;">
+    Created by <a href="" target="_blank">hongchao</a> © 2025
+</div>
